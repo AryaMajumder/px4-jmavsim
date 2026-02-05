@@ -1,0 +1,213 @@
+## 🔴 **Port 14550 is Already in Use**
+
+Something is already bound to port 14550 - most likely your **px4_agent service** is running and connected to it.
+
+---
+
+## ✅ **Complete Fix - Step by Step**
+
+### **Step 1: Stop the Agent Service**
+
+```bash
+# In a separate terminal (not PX4 console)
+sudo systemctl stop px4-agent
+```
+
+### **Step 2: Check What's Using Port 14550**
+
+```bash
+sudo ss -anup | grep 14550
+```
+
+**If you see output** (something still using it):
+```bash
+# Force kill whatever is using it
+sudo fuser -k 14550/udp
+
+# Wait a moment
+sleep 2
+```
+
+### **Step 3: Stop All MAVLink Instances in PX4**
+
+```bash
+# In PX4 console
+pxh> mavlink stop-all
+```
+
+Wait for:
+```
+INFO [mavlink] all instances stopped
+```
+
+### **Step 4: Verify Port is Free**
+
+```bash
+# In another terminal
+sudo ss -anup | grep 14550
+```
+
+**Should return nothing** (no output = port is free)
+
+### **Step 5: Start MAVLink with Correct Ports**
+
+```bash
+# In PX4 console
+pxh> mavlink start -x -u 14550 -o 14560 -t 127.0.0.1 -r 4000000
+```
+
+**Should see** (NO WARNING):
+```
+INFO [mavlink] mode: Normal, data rate: 4000000 B/s on udp port 14550 remote port 14560
+```
+
+### **Step 6: Verify MAVLink Configuration**
+
+```bash
+pxh> mavlink status
+```
+
+Should show:
+```
+instance #0:
+  rates:
+    tx: 15000+ B/s
+    txerr: 0.0 B/s
+  transport protocol: UDP (XXXXX, remote port: 14550)
+```
+
+### **Step 7: Start Agent Service**
+
+```bash
+# In another terminal
+sudo systemctl start px4-agent
+```
+
+### **Step 8: Verify Agent Connected**
+
+```bash
+sudo journalctl -u px4-agent -f
+```
+
+Look for:
+```
+[INFO] Connecting to PX4 at udp:127.0.0.1:14550
+[INFO] Waiting for heartbeat...
+[INFO] Heartbeat received from system 1
+[INFO] MQTT connected successfully
+```
+
+### **Step 9: Start Telemetry Pipeline**
+
+```bash
+sudo systemctl start drone-pipeline
+```
+
+### **Step 10: Verify Telemetry Flowing**
+
+```bash
+sudo journalctl -u iot-forwarder -f
+```
+
+Should see **continuous stream** (10-20/sec):
+```
+[INFO] Published to IoT: drone/DRONE/telemetry_enc (len=128)
+[INFO] Published to IoT: drone/DRONE/telemetry_enc (len=128)
+```
+
+---
+
+## 🔍 **Why This Happened**
+
+The startup sequence matters:
+
+### ❌ **Wrong Order (causes conflict):**
+```
+1. px4-agent service starts
+2. Agent binds to port 14550 (as a client waiting for PX4)
+3. PX4 tries to bind to port 14550 (as a server)
+4. Error: "Address already in use"
+```
+
+### ✅ **Right Order:**
+```
+1. PX4 starts and binds to port 14550 (as a server)
+2. px4-agent service starts
+3. Agent connects to PX4 on port 14550 (as a client)
+4. Success: Both connected
+```
+
+---
+
+## 🚨 **If Still Getting "Address in Use"**
+
+Try the **nuclear option**:
+
+```bash
+# Stop everything
+sudo systemctl stop px4-agent
+sudo systemctl stop drone-pipeline
+pkill -9 px4
+pkill -9 -f px4_agent
+pkill -9 -f mav_to_mqtt
+
+# Kill anything on the ports
+sudo fuser -k 14550/udp
+sudo fuser -k 14560/udp
+
+# Wait
+sleep 3
+
+# Verify ports are free
+sudo ss -anup | grep -E "(14550|14560)"
+# Should return NOTHING
+
+# Start fresh PX4
+cd ~/src/PX4-Autopilot
+make px4_sitl gazebo-classic
+```
+
+Then in PX4 console when it starts:
+```bash
+pxh> mavlink stop-all
+pxh> mavlink start -x -u 14550 -o 14560 -t 127.0.0.1 -r 4000000
+```
+
+Then start services:
+```bash
+sudo systemctl start px4-agent
+sudo systemctl start drone-pipeline
+```
+
+---
+
+## 📋 **Quick Reference: Correct Startup Sequence**
+
+```bash
+# 1. Start PX4 first
+cd ~/src/PX4-Autopilot
+make px4_sitl gazebo-classic
+
+# 2. Configure MAVLink (in PX4 console)
+pxh> mavlink stop-all
+pxh> mavlink start -x -u 14550 -o 14560 -t 127.0.0.1 -r 4000000
+
+# 3. Start agent (in another terminal)
+sudo systemctl start px4-agent
+
+# 4. Start telemetry pipeline
+sudo systemctl start drone-pipeline
+
+# 5. Verify
+sudo journalctl -u iot-forwarder -f
+```
+
+---
+
+## 🎯 **Key Takeaway**
+
+**Always start PX4 and configure MAVLink BEFORE starting the agent service!**
+
+The agent is a **client** that connects to PX4's **server** port. The server must be running first.
+
+Try the steps above and let me know what happens! 🚀
