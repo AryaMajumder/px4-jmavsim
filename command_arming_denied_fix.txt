@@ -1,7 +1,6 @@
 cd ~/src/PX4-Autopilot
 HEADLESS=1 make px4_sitl jmavsim
 
-#mavlink ports to start
 
- mavlink start -x -u 14551 -o 14561 -t 127.0.0.1 -r 4000000
- mavlink start -x -u 14550 -o 14560 -t 127.0.0.1 -r 4000000
+
+ 
