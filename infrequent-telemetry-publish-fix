@@ -55,6 +55,10 @@ sudo ss -anup | grep 14550
 # In PX4 console
 pxh> mavlink start -x -u 14550 -o 14560 -t 127.0.0.1 -r 4000000
 mavlink start -x -u 14555 -o 14556 -t 127.0.0.1 -r 4000000
+
+
+mavlink start -x -u 15100 -o 15101 -t 127.0.0.1 -r 4000000
+mavlink start -x -u 15102 -o 15103 -t 127.0.0.1 -r 4000000
 ```
 
 **Should see** (NO WARNING):
